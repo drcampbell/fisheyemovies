@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<!-- https://bl.ocks.org/mbostock/4062045 -->
+<html>
+<meta charset="utf-8">
+<style>
+
+.node {
+  stroke: #fff;
+  stroke-width: .2px;
+}
+
+.link {
+  stroke: #888;
+}
+
+</style>
+<body>
+<button type="button" id="fisheye_btn" onclick=fisheyeToggle()>Fisheye</button>
+<script src="d3js.org/d3.v3.min.js"></script>
+<script>
+
+// Interactive graph
+//https://github.com/nylen/d3-process-map
+
+
+(function() {
+  d3.fisheye = {
+    scale: function(scaleType) {
+      return d3_fisheye_scale(scaleType(), 3, 0);
+    },
+    circular: function() {
+      var radius = 200,
+          distortion = 2,
+          k0,
+          k1,
+          focus = [0, 0];
+
+      function fisheye(d) {
+        var dx = d.x - focus[0],
+            dy = d.y - focus[1],
+            dd = Math.sqrt(dx * dx + dy * dy);
+        if (!dd || dd >= radius) return {x: d.x, y: d.y, z: dd >= radius ? 1 : 10};
+        var k = k0 * (1 - Math.exp(-dd * k1)) / dd * .75 + .25;
+        return {x: focus[0] + dx * k, y: focus[1] + dy * k, z: Math.min(k, 10)};
+      }
+
+      function rescale() {
+        k0 = Math.exp(distortion);
+        k0 = k0 / (k0 - 1) * radius;
+        k1 = distortion / radius;
+        return fisheye;
+      }
+
+      fisheye.radius = function(_) {
+        if (!arguments.length) return radius;
+        radius = +_;
+        return rescale();
+      };
+
+      fisheye.distortion = function(_) {
+        if (!arguments.length) return distortion;
+        distortion = +_;
+        return rescale();
+      };
+
+      fisheye.focus = function(_) {
+        if (!arguments.length) return focus;
+        focus = _;
+        return fisheye;
+      };
+
+      return rescale();
+    }
+  };
+
+function d3_fisheye_scale(scale, d, a) {
+
+    function fisheye(_) {
+      var x = scale(_),
+          left = x < a,
+          range = d3.extent(scale.range()),
+          min = range[0],
+          max = range[1],
+          m = left ? a - min : max - a;
+      if (m == 0) m = max - min;
+      return (left ? -1 : 1) * m * (d + 1) / (d + (m / Math.abs(x - a))) + a;
+    }
+
+    fisheye.distortion = function(_) {
+      if (!arguments.length) return d;
+      d = +_;
+      return fisheye;
+    };
+
+    fisheye.focus = function(_) {
+      if (!arguments.length) return a;
+      a = +_;
+      return fisheye;
+    };
+
+    fisheye.copy = function() {
+      return d3_fisheye_scale(scale.copy(), d, a);
+    };
+
+    fisheye.nice = scale.nice;
+    fisheye.ticks = scale.ticks;
+    fisheye.tickFormat = scale.tickFormat;
+    return d3.rebind(fisheye, scale, "domain", "range");
+  }
+})();
+
+// END FISHEYE
+
+var selected = {};
+var highlighted = null;
+var default_stroke_opacity = 0.2;
+var fisheye_active = true;
+var selector_active = true;
+document.getElementById('fisheye_btn').style.background="#00FF00";
+
+var width = 1360,
+    height = 660;
+
+var color = d3.scale.category20();
+
+var force = d3.layout.force()
+    .charge(-7)
+    .linkDistance(10)
+    .size([width, height]);
+
+var fisheye = d3.fisheye.circular()
+    .radius(100)
+    .distortion(5);
+
+var svg = d3.select("body").append("svg")
+    .attr("width", width)
+    .attr("height", height);
+
+
+var fisheyemove = null;
+var mouseover_fun = null;
+var mouseover_curr = null
+var mouseout_fun = null;
+var mouseout_curr = null;
+
+// nodes111   easy
+d3.json("networks/agraph1000.json", function(error, graph) {
+  if (error) throw error;
+
+  var n = graph.nodes.length;
+  console.log('number of nodes ' + n);
+  
+  var nodeLocation = new Array(n);
+  var linkDependencies = [];
+    for (var i=0; i < n; i++) {
+	    linkDependencies[i] = [];
+        for (var j=0; j < n; j++) {
+		    linkDependencies[i][j] = false;
+		}
+    }
+  
+  var temp = 0;
+    var nodeMap = {};
+  graph.nodes.forEach(function(d) { nodeMap[d.name] = d; nodeLocation[d.name] = temp++; });
+
+  graph.links.forEach(function(l) {
+      console.log('lalala   ' + (l.source));
+      
+	  if (isNaN(l.source)) {
+          l.source = nodeMap[l.source];
+          l.target = nodeMap[l.target];
+		  linkDependencies[nodeLocation[l.source.name]][nodeLocation[l.target.name]] = true;
+		  linkDependencies[nodeLocation[l.target.name]][nodeLocation[l.source.name]] = true;
+	  } else { // if (l.source is a number)
+	      //l.source = nodeLocation[l.source];
+		  //l.target = nodeLocation[l.target];
+		  linkDependencies[l.source][l.target] = true;
+		  linkDependencies[l.target][l.source] = true;
+	  }
+	  //if (l.source != undefined) {
+		  //linkDependencies[nodeLocation[l.source.name]][nodeLocation[l.target.name]] = true;
+		  //linkDependencies[nodeLocation[l.target.name]][nodeLocation[l.source.name]] = true;
+		  console.log('Link between ' + nodeLocation[l.target.name] + ' and ' + nodeLocation[l.source.name] + ' b0ss.');
+	  //}
+  })
+  
+  force
+      .nodes(graph.nodes)
+      .links(graph.links);
+	  
+  //graph.nodes.forEach(function(d,i){ d.x = d.y = width / n * i; });
+  
+  force.start();
+  for (var i=0; i < 0; i++) force.tick();
+  force.stop();
+  
+	  
+
+  var link = svg.selectAll(".link")
+      .data(graph.links)
+    .enter().append("line")
+      .attr("class", "link")
+	  .attr("stroke-width", 1)
+	  .attr("stroke-opacity", default_stroke_opacity);
+      //.style("stroke-width", function(d) { return Math.sqrt(d.weight); });
+
+
+
+    function highlightObject(obj) {
+		if (obj) {
+			if (obj !== highlighted) {
+				node.attr('fill-opacity', function(d) {
+					if (obj !== d
+					    && !linkDependencies[nodeLocation[obj.name]][nodeLocation[d.name]]
+						&& !linkDependencies[nodeLocation[d.name]][nodeLocation[obj.name]]) return (.1);
+					return 1;
+				});
+				link.attr('stroke-opacity', function(d) {
+					if (obj !== d.source && obj !== d.target) return (.1);
+					//console.log(d.source + '  ' + d.target);
+					return 1;
+				});
+			}
+			highlighted = obj;
+		} else {
+			if (highlighted) {
+				node.attr('fill-opacity', 1);
+				link.attr('stroke-opacity', default_stroke_opacity);
+			}
+			highlighted = null;
+		}
+	}
+	
+	mouseover_curr = mouseover_fun = function(d) {
+			if (graph.mouseoutTimeout) {
+				clearTimeout(graph.mouseoutTimeout);
+				graph.mouseoutTimeout = null;
+			}
+			highlightObject(d);
+        };
+		
+	mouseout_curr = mouseout_fun = function() {
+			if (graph.mouseoutTimeout) {
+				clearTimeout(graph.mouseoutTimeout);
+				graph.mouseoutTimeout = null;
+				console.log('bye');
+			}
+			graph.mouseoutTimeout = setTimeout(function() {
+				highlightObject(null);
+			}, 300);
+        };
+	
+  var node = svg.selectAll(".node")
+      .data(graph.nodes)
+    .enter().append("circle")
+      .attr("class", "node")
+      .attr("r", 2)
+	  .on('mouseover', function(d) {
+			if (graph.mouseoutTimeout) {
+				clearTimeout(graph.mouseoutTimeout);
+				graph.mouseoutTimeout = null;
+			}
+			highlightObject(d);
+        })
+      .on('mouseout', function() {
+			if (graph.mouseoutTimeout) {
+				clearTimeout(graph.mouseoutTimeout);
+				graph.mouseoutTimeout = null;
+				console.log('bye');
+			}
+			graph.mouseoutTimeout = setTimeout(function() {
+				highlightObject(null);
+			}, 300);
+        })
+      .style("fill", function(d) { return color(d.group); });
+	  
+	  if (selector_active) {
+//	    selector_active = false;		
+		//mouse
+	} else {
+//	    selector_active = true;
+        
+		//node = node.on('mouseover', null).on('mouseout', null);
+	}
+	
+	fisheyemove = function () {
+        fisheye.focus(d3.mouse(this));
+
+  node.each(function(d) { d.fisheye = fisheye(d); })
+	  .attr("cx", function(d) { return d.fisheye.x; })
+	  .attr("cy", function(d) { return d.fisheye.y; })
+	  .attr("r", function(d) { return d.fisheye.z * 3; });
+
+  link.attr("x1", function(d) { return d.source.fisheye.x; })
+	  .attr("y1", function(d) { return d.source.fisheye.y; })
+	  .attr("x2", function(d) { return d.target.fisheye.x; })
+	  .attr("y2", function(d) { return d.target.fisheye.y; });
+	  }
+	  //console.log(link.data('target'));
+	  
+	  //for (var name in graph.data) {
+	  //    console.log(name);
+		//  var obj = graph.data[name];
+		  
+		  
+	  //}
+//	node.depends = (function (d) {
+//	
+//	    return 1;
+//	});
+	  
+	  //TODO: Create a button to turn off / on force?
+
+    node.append("title")
+        .text(function(d) { return d.name; });
+
+    force.on("tick", function() {
+		link.attr("x1", function(d) { return d.source.x; })
+			.attr("y1", function(d) { return d.source.y; })
+			.attr("x2", function(d) { return d.target.x; })
+			.attr("y2", function(d) { return d.target.y; });
+
+		node.attr("cx", function(d) { return d.x; })
+			.attr("cy", function(d) { return d.y; });
+    });
+
+/////////////////////////////////////////////////////////
+  
+    svg.on('mousemove', fisheyemove);
+});
+
+function fisheyeToggle() {
+    if (fisheye_active) {
+	    fisheye_active = false;		
+		document.getElementById('fisheye_btn').style.background="#FF0000";
+		svg.on("mousemove", null);
+	} else {
+	    fisheye_active = true;
+		document.getElementById('fisheye_btn').style.background="#00FF00";
+        svg.on("mousemove", fisheyemove);
+	}
+}
+
+
+function selectorToggle() {
+    if (selector_active) {
+	    selector_active = false;
+		mouseover_curr = null;
+		mouseout_curr = null;
+//		node.on('mouseover', null).on('mouseout', null);
+	} else {
+	    selector_active = true;
+		mouseover_curr = mouseover_fun;
+		mouseout_curr = mouseout_fun;
+//        node.on('mouseover', mouseover_fun).on('mouseout', mouseout_fun);
+	}
+}
+
+
+</script>
+<script>
+
+window.onkeyup = function(e) {
+    var key = e.keyCode ? e.keyCode : e.which;
+    console.log('Key:  ' + key);
+	if (key == 70) {
+        fisheyeToggle();
+	} else if (key == 84) {
+	    force.start();
+	    force.tick();
+		force.stop();
+	}
+}
+
+</script>
+
+
+
+</html>
