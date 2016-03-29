@@ -182,6 +182,8 @@ function dragstart(d) {
 function start() {
   var selection1 = document.getElementById("select_file");
     var str = selection1.options[selection1.selectedIndex].text;
+  svg.selectAll(".node").remove();
+  svg.selectAll(".link").remove();
   if (str == '10000graph') {
         main('networks/10000graph.json');
   } else if (str == '100000graph') {
