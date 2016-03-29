@@ -1,6 +1,6 @@
 // This javascript file makes the fisheye able to toggle, as well as force ticking.
 
-
+var fisheye_active = false; // If the fisheye is active.
 function fisheyeToggle() {
     if (fisheye_active) {
 	    fisheye_active = false;		
