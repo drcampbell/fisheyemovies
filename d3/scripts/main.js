@@ -1,10 +1,3 @@
-var t = [];
-var q = [3];
-for (var i in q) {
-	t.push(q[i]);
-}
-//t.push([3,2,3]);
-console.log('yada '+t[0] + ' ' + t[1]);
 
 // For directed graph code from:
 // https://bl.ocks.org/mbostock/4062045
@@ -28,9 +21,12 @@ var color = d3.scale.category20();
 
 // Set default values for the force layout.
 var force = d3.layout.force()
-    .charge(-100)
+    .charge(-70)
 //    .linkDistance(10)
     .size([width, height]);
+	
+var drag = force.drag()
+    .on("dragstart", dragstart);
 
 // Set default values for the fisheye
 var fisheye = d3.fisheye.circular()
@@ -44,6 +40,29 @@ var svg = d3.select("body").append("svg")
 // Store the fisheye function to be toggled.
 var fisheyemove = null;
 
+function randint2(scale){
+  return Math.ceil(Math.random() * scale);
+}
+
+function review_color(score){
+  var red = 255; var green = 255;
+  var t = score / 2.5;
+  if (t < 1){
+    green = 255 * Math.pow(t, 0.5);
+  } else {
+    red = 255 * Math.pow(2-t, 0.5);   
+  }
+  r = "rgb("+ Math.floor(red) +","+ Math.floor(green)+","+ 0+")";
+  return r;
+}
+
+function dblclick(d) {
+  d3.select(this).classed("fixed", d.fixed = false);
+}
+
+function dragstart(d) {
+  d3.select(this).classed("fixed", d.fixed = true);
+}
 
 // Sample graphs:
 // random_networks/nodes111.json   random_networks/easy.json
@@ -87,11 +106,6 @@ d3.json(s, function(error, graph) {
 			var j1 = nodeLocation[l.target.name];
 		    linkDependencies[i1][j1] = true;
 		    linkDependencies[j1][i1] = true;
-			//for (var w in l.weight) {
-			//	link_weights[i][j].push(w);
-			//	link_weights[j][i].push(w);
-			//}
-			// link_reviews[i][j].push(
 	    } else { // if (l.source is a number)
 		    // This else statement was used in random graphs.
 		    linkDependencies[l.source][l.target] = true;
@@ -147,26 +161,17 @@ d3.json(s, function(error, graph) {
 			highlighted = null;
 		}
 	}
-	var default_distance = 20;
-	function linkDistance (d) {
-		var average = 0;
-		var i = 0;
-		for (var w in d.weight) {
-			average += d.weight[w];
-			i++;
-		}
-		if (i == 0) return default_distance;
-		//return (26 - (average/i) * (average/i)) * default_distance;
-		return (6 - (average / i)) * default_distance;
-	}
 	
-	force.linkDistance(linkDistance);
+	force.linkDistance(function (l){
+        var total = 0;
+        l.weight.forEach(function(x){total += x});
+        return 5 * (total/l.weight.length)/5;
+    });
 	
     var node = svg.selectAll(".node")
         .data(graph.nodes)
       .enter().append("circle")
         .attr("class", "node")
-        .attr("r", 2)
 	    .on('mouseover', function(d) { // Highlights the node underneath the mouse.
 			if (graph.mouseoutTimeout) {
 				clearTimeout(graph.mouseoutTimeout);
@@ -187,8 +192,13 @@ d3.json(s, function(error, graph) {
 		// Randomly place the nodes.
 		.attr("cx", function(d) { return Math.random() * width; })
 		.attr("cy", function(d) { return Math.random() * height; })
-		.attr("r", function(d) {return d.count-4;})
-        .style("fill", "#88CCFF"); // function(d) { return color(d.group); }
+		.attr("r", function(d) {return (3 + Math.log(d.helpful + 1));})
+        .style("fill", function(d){
+            var avg_score = d.scores / d.count;
+            return review_color(avg_score);
+        })
+		.on("dblclick", dblclick)
+        .call(drag);
 	  
     node.append("title")
         .text(function(d) { return d.name; });
@@ -211,7 +221,8 @@ d3.json(s, function(error, graph) {
 	    node.each(function(d) { d.fisheye = fisheye(d); })
 		    .attr("cx", function(d) { return d.fisheye.x; })
 		    .attr("cy", function(d) { return d.fisheye.y; })
-		    .attr("r", function(d) { return d.fisheye.z * d.count-4; });
+		    .attr("r", function(d){return (d.fisheye.z * (3 + Math.log(d.helpful + 1)));}); // d.fisheye.z
+			
 
 	    link.attr("x1", function(d) { return d.source.fisheye.x; })
 		    .attr("y1", function(d) { return d.source.fisheye.y; })
@@ -232,6 +243,8 @@ function start() {
         main('networks/10000graph.json');
 	} else if (str == '100000graph') {
 		main('networks/100000graph.json');
+	} else if (str == '100000graphb') {
+		main('networks/100000graphb.json');
 	} else if (str == 'full graph') {
 		main('networks/agraph1000.json');
 	}
